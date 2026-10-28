@@ -30,6 +30,7 @@ func main() {
 
 	port := flag.Int("port", defaultPort, "port to listen on")
 	capFlag := flag.Int("cap", defaultCap, "global request cap")
+	verbose := flag.Bool("verbose", false, "log request headers and body")
 	flag.Parse()
 
 	st := store.New(*capFlag)
@@ -48,7 +49,7 @@ func main() {
 	mux.Handle("/_/", http.StripPrefix("/_/", ui.Handler()))
 
 	// Capture handler — catch-all for slug-based routes.
-	mux.Handle("/", handler.ServeCapture(st))
+	mux.Handle("/", handler.CaptureLogger(handler.ServeCapture(st), *verbose))
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("MockAPI listening on %s", addr)

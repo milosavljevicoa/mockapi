@@ -1101,93 +1101,52 @@
       const bodyText = decodeBody(req.body);
       const ct = (req.content_type || '').toLowerCase();
 
-      // Build full path with query string for display in overview
-      let fullPathDisplay = req.path;
-
       detailArea.innerHTML = `
         <div class="detail-topbar">
           <span class="method-badge-lg ${methodClass(req.method)}">${escHtml(req.method)}</span>
           <span class="detail-full-path">${escHtml(displayPath)}</span>
         </div>
-        <div class="tabs" role="tablist">
-          <div class="tab active" role="tab" tabindex="0" data-tab="overview">Overview</div>
-          <div class="tab" role="tab" tabindex="0" data-tab="headers">Headers</div>
-          ${hasQuery ? `<div class="tab" role="tab" tabindex="0" data-tab="query">Query Params</div>` : ''}
-          <div class="tab" role="tab" tabindex="0" data-tab="body">Body</div>
-        </div>
         <div class="detail-scroll">
-          <!-- Overview -->
-          <div class="tab-pane active" id="tab-overview">
-            <div class="tab-content">
-              <div class="section-label">Request Overview</div>
-              <div class="overview-grid">
-                <div class="overview-row">
-                  <div class="overview-key">Method</div>
-                  <div class="overview-val">${escHtml(req.method)}</div>
-                </div>
-                <div class="overview-row">
-                  <div class="overview-key">Path</div>
-                  <div class="overview-val">${escHtml(req.path)}</div>
-                </div>
-                <div class="overview-row">
-                  <div class="overview-key">Received at</div>
-                  <div class="overview-val">${fmtTimestamp(req.received_at)}</div>
-                </div>
-                <div class="overview-row">
-                  <div class="overview-key">Content-Type</div>
-                  <div class="overview-val">${escHtml(req.content_type || '—')}</div>
-                </div>
-                <div class="overview-row">
-                  <div class="overview-key">Body size</div>
-                  <div class="overview-val">${fmtSize(req.body_size)}</div>
-                </div>
+          <div class="tab-content">
+            <div class="section-label">Overview</div>
+            <div class="overview-grid">
+              <div class="overview-row">
+                <div class="overview-key">Method</div>
+                <div class="overview-val">${escHtml(req.method)}</div>
+              </div>
+              <div class="overview-row">
+                <div class="overview-key">Path</div>
+                <div class="overview-val">${escHtml(req.path)}</div>
+              </div>
+              <div class="overview-row">
+                <div class="overview-key">Received at</div>
+                <div class="overview-val">${fmtTimestamp(req.received_at)}</div>
+              </div>
+              <div class="overview-row">
+                <div class="overview-key">Content-Type</div>
+                <div class="overview-val">${escHtml(req.content_type || '—')}</div>
+              </div>
+              <div class="overview-row">
+                <div class="overview-key">Body size</div>
+                <div class="overview-val">${fmtSize(req.body_size)}</div>
               </div>
             </div>
-          </div>
 
-          <!-- Headers -->
-          <div class="tab-pane" id="tab-headers">
-            <div class="tab-content">
-              <div class="section-label">Request Headers</div>
-              ${renderHeadersTable(req.headers)}
-            </div>
-          </div>
+            <div class="section-label" style="margin-top:24px">Headers</div>
+            ${renderHeadersTable(req.headers)}
 
-          <!-- Query Params -->
-          <div class="tab-pane" id="tab-query">
-            <div class="tab-content">
-              ${hasQuery
-                ? `<div class="section-label">Query Parameters</div>${renderQueryTable(req.query)}`
-                : `<div class="empty-state" style="height:auto;padding-top:40px"><div class="empty-title">No query parameters</div></div>`
-              }
-            </div>
-          </div>
+            ${hasQuery ? `
+            <div class="section-label" style="margin-top:24px">Query Parameters</div>
+            ${renderQueryTable(req.query)}
+            ` : ''}
 
-          <!-- Body -->
-          <div class="tab-pane" id="tab-body">
-            <div class="tab-content">
-              ${renderBodyPane(bodyText, ct)}
-            </div>
+            <div class="section-label" style="margin-top:24px">Body</div>
+            ${renderBodyPane(bodyText, ct)}
           </div>
         </div>
       `;
 
-      // Tab switching
-      detailArea.querySelectorAll('.tab').forEach(tab => {
-        const activate = () => {
-          detailArea.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          detailArea.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-          tab.classList.add('active');
-          const pane = detailArea.querySelector(`#tab-${tab.dataset.tab}`);
-          if (pane) pane.classList.add('active');
-        };
-        tab.addEventListener('click', activate);
-        tab.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
-        });
-      });
-
-      // Sub-tab switching (body)
+      // Sub-tab switching (body pretty/raw)
       const subTabs = detailArea.querySelectorAll('.sub-tab');
       subTabs.forEach(st => {
         st.addEventListener('click', () => {
