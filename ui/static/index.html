@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MockAPI</title>
+  <meta name="description" content="Webhook inspector — capture and inspect incoming HTTP requests in real time.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg-base:    #0f1117;
+      --bg-panel:   #161b27;
+      --bg-raised:  #1e2536;
+      --bg-hover:   #242d42;
+      --border:     #2a3349;
+      --border-hi:  #3a4a6a;
+      --text-pri:   #e8eaf0;
+      --text-sec:   #b0b8cc;
+      --text-muted: #7a8499;
+      --accent:     #4f9cf9;
+      --accent-dim: #1a3a6a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg-base);
+      color: var(--text-pri);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      min-width: 1024px;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    #app-header {
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .app-wordmark {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-pri);
+      user-select: none;
+    }
+
+    .app-wordmark span {
+      color: var(--accent);
+    }
+
+    /* ── Main layout ──────────────────────────────────── */
+    #app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Panels ───────────────────────────────────────── */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+
+    #panel-channels {
+      width: 200px;
+      flex-shrink: 0;
+      background: var(--bg-panel);
+    }
+
+    #panel-requests {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--bg-base);
+    }
+
+    #panel-detail {
+      flex: 1;
+      background: var(--bg-base);
+      border-right: none;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      height: 38px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .panel-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+    /* ── Buttons ──────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.1s, color 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0a1628;
+    }
+
+    .btn-primary:hover { background: #6aaeff; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-sec);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-raised);
+      color: var(--text-pri);
+      border-color: var(--border-hi);
+    }
+
+    .btn-icon {
+      padding: 4px 6px;
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .btn-icon:hover {
+      background: var(--bg-raised);
+      color: var(--text-pri);
+    }
+
+    .btn-icon:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* ── Channel list ─────────────────────────────────── */
+    .channel-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px 0 12px;
+      height: 32px;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      position: relative;
+    }
+
+    .channel-item:hover {
+      background: var(--bg-raised);
+    }
+
+    .channel-item.active {
+      background: var(--accent-dim);
+      border-left: 2px solid var(--accent);
+      padding-left: 10px;
+    }
+
+    .channel-name {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-sec);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .channel-item.active .channel-name {
+      color: var(--text-pri);
+    }
+
+    .channel-menu-btn {
+      opacity: 0;
+      flex-shrink: 0;
+    }
+
+    .channel-item:hover .channel-menu-btn,
+    .channel-item.active .channel-menu-btn {
+      opacity: 1;
+    }
+
+    /* ── Context menu ─────────────────────────────────── */
+    .ctx-menu {
+      position: fixed;
+      background: var(--bg-raised);
+      border: 1px solid var(--border-hi);
+      border-radius: 6px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 100;
+      padding: 4px;
+      min-width: 140px;
+    }
+
+    .ctx-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-sec);
+    }
+
+    .ctx-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-pri);
+    }
+
+    .ctx-item.danger { color: #f87171; }
+    .ctx-item.danger:hover { background: rgba(248,113,113,0.1); }
+
+    /* ── Request list ─────────────────────────────────── */
+    .req-item {
+      display: grid;
+      grid-template-columns: 52px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+
+    .req-item:hover { background: var(--bg-raised); }
+
+    .req-item.active {
+      background: var(--accent-dim);
+      border-left: 2px solid var(--accent);
+      padding-left: 10px;
+    }
+
+    .req-item:last-child { border-bottom: none; }
+
+    .method-badge {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 2px 5px;
+      border-radius: 3px;
+      text-align: center;
+      width: 52px;
+    }
+
+    .method-GET    { background: #14532d; color: #86efac; }
+    .method-POST   { background: #1e3a5f; color: #93c5fd; }
+    .method-PUT    { background: #422006; color: #fcd34d; }
+    .method-PATCH  { background: #422006; color: #fcd34d; }
+    .method-DELETE { background: #4c0519; color: #fca5a5; }
+    .method-OTHER  { background: #1e2536; color: #9ca3af; }
+
+    .req-path {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-pri);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .req-meta {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 1px;
+    }
+
+    .req-time {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .req-size {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Detail panel ─────────────────────────────────── */
+    #panel-detail .panel-body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .detail-method-path {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .detail-path {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 14px;
+      color: var(--text-pri);
+      word-break: break-all;
+    }
+
+    /* ── Tabs ─────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    .tab {
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.1s;
+    }
+
+    .tab:hover { color: var(--text-sec); }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      border-radius: 2px;
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .tab-content::-webkit-scrollbar { width: 4px; }
+    .tab-content::-webkit-scrollbar-track { background: transparent; }
+    .tab-content::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .sub-pane { display: none; }
+    .sub-pane.active { display: block; }
+
+    /* ── KV table ─────────────────────────────────────── */
+    .kv-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .kv-table tr {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .kv-table tr:last-child { border-bottom: none; }
+
+    .kv-table td {
+      padding: 6px 0;
+      vertical-align: top;
+    }
+
+    .kv-table td:first-child {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      color: var(--text-muted);
+      padding-right: 24px;
+      white-space: nowrap;
+      width: 1%;
+    }
+
+    .kv-table td:last-child {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      color: var(--text-pri);
+      word-break: break-all;
+    }
+
+    /* ── Pre / code ───────────────────────────────────── */
+    .body-pre {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px;
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-pri);
+      overflow-x: auto;
+      white-space: pre;
+      tab-size: 2;
+      margin: 0;
+    }
+
+    /* ── JSON syntax highlight ────────────────────────── */
+    .json-string  { color: #7ee787; }
+    .json-number  { color: #79c0ff; }
+    .json-bool    { color: #ff7b72; }
+    .json-null    { color: #ff7b72; }
+    .json-key     { color: #d2a8ff; }
+
+    /* ── Sub-tabs (Body pretty/raw) ───────────────────── */
+    .sub-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .sub-tab {
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: 3px;
+      cursor: pointer;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+    }
+
+    .sub-tab:hover { color: var(--text-sec); }
+
+    .sub-tab.active {
+      background: var(--bg-raised);
+      border-color: var(--border-hi);
+      color: var(--text-pri);
+    }
+
+    .sub-tab:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* ── Placeholder / empty states ───────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 8px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 32px;
+    }
+
+    .empty-icon {
+      font-size: 28px;
+      opacity: 0.4;
+      margin-bottom: 4px;
+    }
+
+    .empty-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-sec);
+    }
+
+    .empty-sub {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    /* ── Overview row ─────────────────────────────────── */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 0;
+      font-size: 12px;
+    }
+
+    .overview-row {
+      display: contents;
+    }
+
+    .overview-row > * {
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .overview-row:last-child > * {
+      border-bottom: none;
+    }
+
+    .overview-key {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      color: var(--text-muted);
+      padding-right: 16px;
+    }
+
+    .overview-val {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      color: var(--text-pri);
+      word-break: break-all;
+    }
+
+    /* ── Modal ────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-backdrop.hidden { display: none; }
+
+    .modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      width: 400px;
+      padding: 20px;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-pri);
+      margin-bottom: 4px;
+    }
+
+    .modal-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: var(--bg-base);
+      border: 1px solid var(--border-hi);
+      border-radius: 4px;
+      padding: 7px 10px;
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-pri);
+      outline: none;
+      margin-bottom: 6px;
+    }
+
+    .modal-input:focus {
+      border-color: var(--accent);
+    }
+
+    .modal-input::placeholder { color: var(--text-muted); }
+
+    .modal-error {
+      font-size: 11px;
+      color: #f87171;
+      min-height: 16px;
+      margin-bottom: 12px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ── Success view in modal ────────────────────────── */
+    .modal-success {
+      display: none;
+    }
+
+    .url-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg-base);
+      border: 1px solid var(--border-hi);
+      border-radius: 4px;
+      padding: 7px 10px;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .url-box-text {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      flex-shrink: 0;
+      background: var(--bg-raised);
+      border: 1px solid var(--border-hi);
+      border-radius: 3px;
+      color: var(--text-sec);
+      font-size: 11px;
+      padding: 2px 8px;
+      cursor: pointer;
+    }
+
+    .copy-btn:hover { background: var(--bg-hover); color: var(--text-pri); }
+    .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ── Error banner ─────────────────────────────────── */
+    .error-banner {
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 4px;
+      color: #fca5a5;
+      font-size: 12px;
+      padding: 8px 12px;
+      margin: 8px 12px;
+    }
+
+    /* ── Inline detail top bar ────────────────────────── */
+    .detail-topbar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .method-badge-lg {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 3px 7px;
+      border-radius: 3px;
+    }
+
+    .detail-full-path {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--text-pri);
+      word-break: break-all;
+    }
+
+    /* ── Section label ────────────────────────────────── */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── Scrollable full detail content ───────────────── */
+    .detail-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .detail-scroll::-webkit-scrollbar { width: 4px; }
+    .detail-scroll::-webkit-scrollbar-track { background: transparent; }
+    .detail-scroll::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ───────────────────────────── -->
+  <header id="app-header">
+    <div class="app-wordmark">mock<span>api</span></div>
+    <button class="btn btn-primary" id="btn-new-channel">+ New Channel</button>
+  </header>
+
+  <!-- ── Body ─────────────────────────────── -->
+  <div id="app-body">
+
+    <!-- Channels sidebar -->
+    <div class="panel" id="panel-channels">
+      <div class="panel-header">
+        <span class="panel-label">Channels</span>
+      </div>
+      <div class="panel-body" id="channel-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Request list -->
+    <div class="panel" id="panel-requests">
+      <div class="panel-header">
+        <span class="panel-label">Requests</span>
+        <button class="btn btn-ghost" id="btn-refresh" style="display:none">↻ Refresh</button>
+      </div>
+      <div class="panel-body" id="request-list">
+        <div class="empty-state">
+          <div class="empty-icon">⬡</div>
+          <div class="empty-title">Select a channel</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="panel" id="panel-detail">
+      <div class="panel-body" id="detail-area" style="display:flex;flex-direction:column;height:100%;">
+        <div class="empty-state">
+          <div class="empty-icon">⬡</div>
+          <div class="empty-title">Select a request</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── New Channel Modal ─────────────────── -->
+  <div class="modal-backdrop hidden" id="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <!-- Create form view -->
+      <div id="modal-create-view">
+        <div class="modal-title" id="modal-title">New Channel</div>
+        <div class="modal-sub">Choose a slug for your webhook channel, or leave blank to auto-generate.</div>
+        <input class="modal-input" id="modal-slug-input" type="text" placeholder="auto-generate" autocomplete="off" spellcheck="false">
+        <div class="modal-error" id="modal-error"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="btn-modal-create">Create</button>
+        </div>
+      </div>
+      <!-- Success view -->
+      <div class="modal-success" id="modal-success-view">
+        <div class="modal-title">Channel created</div>
+        <div class="modal-sub">Your webhook URL is ready to receive requests.</div>
+        <div class="url-box">
+          <span class="url-box-text" id="success-url"></span>
+          <button class="copy-btn" id="btn-copy-success-url">Copy</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-modal-done">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Context menu ──────────────────────── -->
+  <div class="ctx-menu" id="ctx-menu" style="display:none">
+    <div class="ctx-item" id="ctx-copy-url">
+      <span>⎘</span> Copy URL
+    </div>
+    <div class="ctx-item danger" id="ctx-clear">
+      <span>⌫</span> Clear requests
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ── State ──────────────────────────────────────────────────────────
+    let channels = [];
+    let activeChannel = null;
+    let requests = [];
+    let activeRequestId = null;
+    let ctxTargetSlug = null;
+    let newChannelCreatedSlug = null;
+
+    // ── DOM refs ───────────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+    const channelList    = $('channel-list');
+    const requestList    = $('request-list');
+    const detailArea     = $('detail-area');
+    const btnRefresh     = $('btn-refresh');
+    const modalBackdrop  = $('modal-backdrop');
+    const modalCreateView = $('modal-create-view');
+    const modalSuccessView = $('modal-success-view');
+    const modalSlugInput = $('modal-slug-input');
+    const modalError     = $('modal-error');
+    const successUrl     = $('success-url');
+    const ctxMenu        = $('ctx-menu');
+
+    // ── Utilities ──────────────────────────────────────────────────────
+    function fmtTimestamp(isoStr) {
+      if (!isoStr) return '—';
+      const d = new Date(isoStr);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} `
+           + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function fmtSize(bytes) {
+      if (bytes == null || bytes === 0) return '0 B';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024*1024)).toFixed(1)} MB`;
+    }
+
+    function stripSlugPrefix(slug, path) {
+      const prefix = '/' + slug;
+      if (path === prefix) return '/';
+      if (path.startsWith(prefix + '/')) return path.slice(prefix.length);
+      if (path.startsWith(prefix + '?')) return path.slice(prefix.length);
+      return path || '/';
+    }
+
+    function methodClass(method) {
+      const m = (method || '').toUpperCase();
+      if (m === 'GET')    return 'method-GET';
+      if (m === 'POST')   return 'method-POST';
+      if (m === 'PUT')    return 'method-PUT';
+      if (m === 'PATCH')  return 'method-PATCH';
+      if (m === 'DELETE') return 'method-DELETE';
+      return 'method-OTHER';
+    }
+
+    function decodeBody(b64) {
+      if (!b64) return '';
+      try {
+        // Decode base64 to a byte array, then interpret as UTF-8.
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder('utf-8').decode(bytes);
+      } catch {
+        try { return atob(b64); } catch { return ''; }
+      }
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── JSON syntax highlighter (regex-based, safe) ─────────────────
+    function highlightJson(jsonStr) {
+      // Run the regex on the RAW string (before HTML escaping) so that
+      // quote characters are still literal `"` and the pattern matches.
+      // Then escape each piece individually as we build the output.
+      const tokenRe = /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?|true|false|null)/g;
+      let result = '';
+      let lastIndex = 0;
+      let match;
+      while ((match = tokenRe.exec(jsonStr)) !== null) {
+        // Escape the gap between the last token and this one.
+        result += escHtml(jsonStr.slice(lastIndex, match.index));
+        const token = match[1];
+        let cls = 'json-number';
+        if (token.startsWith('"')) {
+          cls = token.trimEnd().endsWith(':') ? 'json-key' : 'json-string';
+        } else if (token === 'true' || token === 'false') {
+          cls = 'json-bool';
+        } else if (token === 'null') {
+          cls = 'json-null';
+        }
+        result += `<span class="${cls}">${escHtml(token)}</span>`;
+        lastIndex = match.index + match[0].length;
+      }
+      // Append any remaining text after the last token.
+      result += escHtml(jsonStr.slice(lastIndex));
+      return result;
+    }
+
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      }).catch(() => {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
+    // ── API calls ──────────────────────────────────────────────────────
+    async function apiGet(path) {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    async function apiPost(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return res;
+    }
+
+    async function apiDelete(path) {
+      const res = await fetch(path, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+    }
+
+    // ── Render channels ────────────────────────────────────────────────
+    function renderChannels() {
+      if (channels.length === 0) {
+        channelList.innerHTML = `
+          <div class="empty-state" style="padding:20px 12px;">
+            <div class="empty-title" style="font-size:11px;">No channels yet</div>
+          </div>`;
+        return;
+      }
+      channelList.innerHTML = '';
+      channels.forEach(ch => {
+        const item = document.createElement('div');
+        item.className = 'channel-item' + (ch.slug === activeChannel ? ' active' : '');
+        item.dataset.slug = ch.slug;
+
+        const name = document.createElement('div');
+        name.className = 'channel-name';
+        name.textContent = ch.slug;
+        name.title = ch.slug;
+
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'btn-icon channel-menu-btn';
+        menuBtn.title = 'Channel actions';
+        menuBtn.setAttribute('aria-label', 'Channel actions');
+        menuBtn.textContent = '⋯';
+        menuBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          openCtxMenu(e, ch.slug);
+        });
+
+        item.appendChild(name);
+        item.appendChild(menuBtn);
+
+        item.addEventListener('click', () => selectChannel(ch.slug));
+        channelList.appendChild(item);
+      });
+    }
+
+    // ── Select channel ─────────────────────────────────────────────────
+    async function selectChannel(slug) {
+      activeChannel = slug;
+      activeRequestId = null;
+      renderChannels();
+      btnRefresh.style.display = '';
+      await loadRequests();
+    }
+
+    // ── Load channels ──────────────────────────────────────────────────
+    async function loadChannels() {
+      try {
+        channels = await apiGet('/_/api/channels');
+        renderChannels();
+      } catch (e) {
+        channelList.innerHTML = `<div class="error-banner">Failed to load channels: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    // ── Load requests ──────────────────────────────────────────────────
+    async function loadRequests() {
+      if (!activeChannel) return;
+      try {
+        requests = await apiGet(`/_/api/channels/${encodeURIComponent(activeChannel)}/requests`);
+        // Newest first
+        requests.sort((a, b) => new Date(b.received_at) - new Date(a.received_at));
+        renderRequests();
+        if (activeRequestId) {
+          const still = requests.find(r => r.id === activeRequestId);
+          if (still) renderDetail(still);
+          else {
+            activeRequestId = null;
+            renderDetailEmpty();
+          }
+        } else {
+          renderDetailEmpty();
+        }
+      } catch (e) {
+        requestList.innerHTML = `<div class="error-banner">Failed to load requests: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    // ── Render requests ────────────────────────────────────────────────
+    function renderRequests() {
+      if (requests.length === 0) {
+        const url = `${location.protocol}//${location.host}/${activeChannel}`;
+        requestList.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <div class="empty-title">No requests yet</div>
+            <div class="empty-sub">Send a webhook to:<br>${escHtml(url)}</div>
+          </div>`;
+        return;
+      }
+      requestList.innerHTML = '';
+      requests.forEach(req => {
+        const item = document.createElement('div');
+        item.className = 'req-item' + (req.id === activeRequestId ? ' active' : '');
+        item.dataset.id = req.id;
+
+        const displayPath = stripSlugPrefix(activeChannel, req.path);
+
+        item.innerHTML = `
+          <span class="method-badge ${methodClass(req.method)}">${escHtml(req.method)}</span>
+          <span class="req-path" title="${escHtml(req.path)}">${escHtml(displayPath)}</span>
+          <div class="req-meta">
+            <span class="req-time">${fmtTimestamp(req.received_at)}</span>
+            <span class="req-size">${fmtSize(req.body_size)}</span>
+          </div>
+        `;
+        item.addEventListener('click', () => selectRequest(req));
+        requestList.appendChild(item);
+      });
+    }
+
+    // ── Select request ─────────────────────────────────────────────────
+    function selectRequest(req) {
+      activeRequestId = req.id;
+      // Update active states in list
+      requestList.querySelectorAll('.req-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === req.id);
+      });
+      renderDetail(req);
+    }
+
+    // ── Detail: empty ──────────────────────────────────────────────────
+    function renderDetailEmpty() {
+      detailArea.innerHTML = `
+        <div class="empty-state" style="height:100%">
+          <div class="empty-icon">⬡</div>
+          <div class="empty-title">Select a request</div>
+        </div>`;
+    }
+
+    // ── Detail: render ─────────────────────────────────────────────────
+    function renderDetail(req) {
+      const displayPath = stripSlugPrefix(activeChannel, req.path);
+      const hasQuery = req.query && Object.keys(req.query).length > 0;
+      const bodyText = decodeBody(req.body);
+      const ct = (req.content_type || '').toLowerCase();
+
+      // Build full path with query string for display in overview
+      let fullPathDisplay = req.path;
+
+      detailArea.innerHTML = `
+        <div class="detail-topbar">
+          <span class="method-badge-lg ${methodClass(req.method)}">${escHtml(req.method)}</span>
+          <span class="detail-full-path">${escHtml(displayPath)}</span>
+        </div>
+        <div class="tabs" role="tablist">
+          <div class="tab active" role="tab" tabindex="0" data-tab="overview">Overview</div>
+          <div class="tab" role="tab" tabindex="0" data-tab="headers">Headers</div>
+          ${hasQuery ? `<div class="tab" role="tab" tabindex="0" data-tab="query">Query Params</div>` : ''}
+          <div class="tab" role="tab" tabindex="0" data-tab="body">Body</div>
+        </div>
+        <div class="detail-scroll">
+          <!-- Overview -->
+          <div class="tab-pane active" id="tab-overview">
+            <div class="tab-content">
+              <div class="section-label">Request Overview</div>
+              <div class="overview-grid">
+                <div class="overview-row">
+                  <div class="overview-key">Method</div>
+                  <div class="overview-val">${escHtml(req.method)}</div>
+                </div>
+                <div class="overview-row">
+                  <div class="overview-key">Path</div>
+                  <div class="overview-val">${escHtml(req.path)}</div>
+                </div>
+                <div class="overview-row">
+                  <div class="overview-key">Received at</div>
+                  <div class="overview-val">${fmtTimestamp(req.received_at)}</div>
+                </div>
+                <div class="overview-row">
+                  <div class="overview-key">Content-Type</div>
+                  <div class="overview-val">${escHtml(req.content_type || '—')}</div>
+                </div>
+                <div class="overview-row">
+                  <div class="overview-key">Body size</div>
+                  <div class="overview-val">${fmtSize(req.body_size)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Headers -->
+          <div class="tab-pane" id="tab-headers">
+            <div class="tab-content">
+              <div class="section-label">Request Headers</div>
+              ${renderHeadersTable(req.headers)}
+            </div>
+          </div>
+
+          <!-- Query Params -->
+          <div class="tab-pane" id="tab-query">
+            <div class="tab-content">
+              ${hasQuery
+                ? `<div class="section-label">Query Parameters</div>${renderQueryTable(req.query)}`
+                : `<div class="empty-state" style="height:auto;padding-top:40px"><div class="empty-title">No query parameters</div></div>`
+              }
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div class="tab-pane" id="tab-body">
+            <div class="tab-content">
+              ${renderBodyPane(bodyText, ct)}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Tab switching
+      detailArea.querySelectorAll('.tab').forEach(tab => {
+        const activate = () => {
+          detailArea.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          detailArea.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          const pane = detailArea.querySelector(`#tab-${tab.dataset.tab}`);
+          if (pane) pane.classList.add('active');
+        };
+        tab.addEventListener('click', activate);
+        tab.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+        });
+      });
+
+      // Sub-tab switching (body)
+      const subTabs = detailArea.querySelectorAll('.sub-tab');
+      subTabs.forEach(st => {
+        st.addEventListener('click', () => {
+          subTabs.forEach(s => s.classList.remove('active'));
+          st.classList.add('active');
+          detailArea.querySelectorAll('.sub-pane').forEach(p => p.classList.remove('active'));
+          const target = detailArea.querySelector(`#sub-${st.dataset.sub}`);
+          if (target) target.classList.add('active');
+        });
+        st.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); st.click(); }
+        });
+      });
+    }
+
+    function renderHeadersTable(headers) {
+      if (!headers || Object.keys(headers).length === 0) {
+        return `<div class="empty-state" style="height:auto;padding-top:40px"><div class="empty-title">No headers</div></div>`;
+      }
+      const sorted = Object.keys(headers).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      const rows = sorted.map(k => {
+        const val = Array.isArray(headers[k]) ? headers[k].join(', ') : headers[k];
+        return `<tr>
+          <td>${escHtml(k)}</td>
+          <td>${escHtml(val)}</td>
+        </tr>`;
+      }).join('');
+      return `<table class="kv-table"><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderQueryTable(query) {
+      if (!query) return '';
+      const rows = [];
+      Object.keys(query).sort().forEach(k => {
+        const vals = Array.isArray(query[k]) ? query[k] : [query[k]];
+        vals.forEach(v => {
+          rows.push(`<tr>
+            <td>${escHtml(k)}</td>
+            <td>${escHtml(v)}</td>
+          </tr>`);
+        });
+      });
+      return `<table class="kv-table"><tbody>${rows.join('')}</tbody></table>`;
+    }
+
+    function renderBodyPane(bodyText, ct) {
+      if (!bodyText) {
+        return `<div class="empty-state" style="height:auto;padding-top:40px"><div class="empty-title">Empty body</div></div>`;
+      }
+
+      let prettyHtml = '';
+
+      if (ct.includes('application/json')) {
+        try {
+          const parsed = JSON.parse(bodyText);
+          const formatted = JSON.stringify(parsed, null, 2);
+          prettyHtml = `<pre class="body-pre">${highlightJson(formatted)}</pre>`;
+        } catch {
+          prettyHtml = `<pre class="body-pre">${escHtml(bodyText)}</pre>`;
+        }
+      } else if (ct.includes('application/x-www-form-urlencoded')) {
+        try {
+          const params = new URLSearchParams(bodyText);
+          const rows = [];
+          params.forEach((v, k) => {
+            rows.push(`<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`);
+          });
+          prettyHtml = rows.length > 0
+            ? `<table class="kv-table"><tbody>${rows.join('')}</tbody></table>`
+            : `<pre class="body-pre">${escHtml(bodyText)}</pre>`;
+        } catch {
+          prettyHtml = `<pre class="body-pre">${escHtml(bodyText)}</pre>`;
+        }
+      } else {
+        prettyHtml = `<pre class="body-pre">${escHtml(bodyText)}</pre>`;
+      }
+
+      const rawHtml = `<pre class="body-pre">${escHtml(bodyText)}</pre>`;
+
+      return `
+        <div class="sub-tabs">
+          <div class="sub-tab active" data-sub="pretty" tabindex="0" role="tab">Pretty</div>
+          <div class="sub-tab" data-sub="raw" tabindex="0" role="tab">Raw</div>
+        </div>
+        <div class="sub-pane active" id="sub-pretty">${prettyHtml}</div>
+        <div class="sub-pane" id="sub-raw">${rawHtml}</div>
+      `;
+    }
+
+    // ── Context menu ───────────────────────────────────────────────────
+    function openCtxMenu(e, slug) {
+      ctxTargetSlug = slug;
+      ctxMenu.style.display = 'block';
+      const x = Math.min(e.clientX, window.innerWidth - 160);
+      const y = Math.min(e.clientY, window.innerHeight - 80);
+      ctxMenu.style.left = x + 'px';
+      ctxMenu.style.top  = y + 'px';
+    }
+
+    function closeCtxMenu() {
+      ctxMenu.style.display = 'none';
+      ctxTargetSlug = null;
+    }
+
+    document.addEventListener('click', e => {
+      if (!ctxMenu.contains(e.target)) closeCtxMenu();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeCtxMenu();
+        closeModal();
+      }
+    });
+
+    $('ctx-copy-url').addEventListener('click', () => {
+      if (!ctxTargetSlug) return;
+      const url = `${location.protocol}//${location.host}/${ctxTargetSlug}`;
+      copyToClipboard(url, $('ctx-copy-url'));
+      closeCtxMenu();
+    });
+
+    $('ctx-clear').addEventListener('click', async () => {
+      const slug = ctxTargetSlug;
+      closeCtxMenu();
+      if (!slug) return;
+      try {
+        await apiDelete(`/_/api/channels/${encodeURIComponent(slug)}/requests`);
+        if (activeChannel === slug) {
+          requests = [];
+          activeRequestId = null;
+          renderRequests();
+          renderDetailEmpty();
+        }
+      } catch (e) {
+        // Non-fatal; could show banner but keep it simple
+        console.error('Clear failed:', e);
+      }
+    });
+
+    // ── Modal ──────────────────────────────────────────────────────────
+    function openModal() {
+      modalCreateView.style.display = 'block';
+      modalSuccessView.style.display = 'none';
+      modalSlugInput.value = '';
+      modalError.textContent = '';
+      modalBackdrop.classList.remove('hidden');
+      modalSlugInput.focus();
+    }
+
+    function closeModal() {
+      modalBackdrop.classList.add('hidden');
+      newChannelCreatedSlug = null;
+    }
+
+    $('btn-new-channel').addEventListener('click', openModal);
+    $('btn-modal-cancel').addEventListener('click', closeModal);
+    $('btn-modal-done').addEventListener('click', () => {
+      closeModal();
+    });
+
+    modalBackdrop.addEventListener('click', e => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+
+    $('btn-modal-create').addEventListener('click', createChannel);
+    modalSlugInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') createChannel();
+    });
+
+    async function createChannel() {
+      const slug = modalSlugInput.value.trim();
+      const body = slug ? { slug } : {};
+      modalError.textContent = '';
+
+      try {
+        const res = await apiPost('/_/api/channels', body);
+        if (res.status === 201) {
+          const created = await res.json();
+          // Refresh channel list and select new channel
+          await loadChannels();
+          await selectChannel(created.slug);
+          // Show success view
+          const webhookUrl = `${location.protocol}//${location.host}/${created.slug}`;
+          successUrl.textContent = webhookUrl;
+          modalCreateView.style.display = 'none';
+          modalSuccessView.style.display = 'block';
+          $('btn-copy-success-url').onclick = e => copyToClipboard(webhookUrl, e.target);
+        } else {
+          let msg = `Error ${res.status}`;
+          try {
+            const data = await res.json();
+            if (data.error || data.message) msg = data.error || data.message;
+          } catch {}
+          modalError.textContent = msg;
+        }
+      } catch (e) {
+        modalError.textContent = `Network error: ${e.message}`;
+      }
+    }
+
+    // ── Refresh button ─────────────────────────────────────────────────
+    btnRefresh.addEventListener('click', loadRequests);
+
+    // ── Boot ───────────────────────────────────────────────────────────
+    loadChannels();
+
+  })();
+  </script>
+</body>
+</html>
