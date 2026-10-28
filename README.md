@@ -39,11 +39,11 @@ Channels are created automatically when the first request arrives at `/{slug}`. 
 ┌──────────────────────────────────────────────────────┐
 │                    Go Binary                         │
 │                                                      │
-│  ┌────────────┐   ┌──────────────┐   ┌───────────┐  │
-│  │  Capture   │   │   In-Memory  │   │ Dashboard │  │
-│  │  Handler   │──▶│    Store     │◀──│    API    │  │
-│  │ /{slug}/.. │   │  (ring buf)  │   │  /_/...   │  │
-│  └────────────┘   └──────────────┘   └───────────┘  │
+│  ┌────────────┐   ┌──────────────┐   ┌───────────┐   │
+│  │  Capture   │   │   In-Memory  │   │ Dashboard │   │
+│  │  Handler   │──▶│    Store     │◀──│    API    │   │
+│  │ /{slug}/.. │   │  (ring buf)  │   │  /_/...   │   │
+│  └────────────┘   └──────────────┘   └───────────┘   │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -63,20 +63,16 @@ Per-channel actions: **Copy URL** and **Clear** (removes all requests, keeps the
 
 ## Configuration
 
-| Flag | Env Var | Default | Description |
-|---|---|---|---|
-| `--port` | `PORT` | `9000` | Port to listen on |
-| `--cap` | `CAP` | `100` | Max requests held in memory (oldest evicted first) |
-| `--verbose` | — | `false` | Print headers and body to stderr per captured request |
+| Flag | Default | Description |
+|---|---|---|
+| `--port` | `9000` | Port to listen on |
+| `--cap` | `100` | Max requests held in memory (oldest evicted first) |
+| `--verbose` | `false` | Print headers and body to stderr per captured request |
 
-CLI flags take precedence over env vars.
 
 ```bash
 # Custom port
 ./mockapi --port 8080
-
-# Env vars
-PORT=8080 CAP=200 ./mockapi
 
 # Verbose console logging
 ./mockapi --verbose
