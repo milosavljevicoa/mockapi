@@ -69,7 +69,10 @@ func ServeCapture(st *store.Store) http.Handler {
 		}
 		st.AddRequest(req)
 
-		// Always respond 200 OK with empty body.
-		w.WriteHeader(http.StatusOK)
+		// Look up the configured response rule for this channel/method/path.
+		status, body := st.GetResponseRule(slug, r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
 	})
 }

@@ -18,16 +18,18 @@ type channelJSON struct {
 
 // requestJSON is the JSON representation of a Request.
 type requestJSON struct {
-	ID          string              `json:"id"`
-	ChannelSlug string              `json:"channel_slug"`
-	ReceivedAt  time.Time           `json:"received_at"`
-	Method      string              `json:"method"`
-	Path        string              `json:"path"`
-	Query       map[string][]string `json:"query"`
-	Headers     map[string][]string `json:"headers"`
-	Body        []byte              `json:"body"`
-	ContentType string              `json:"content_type"`
-	BodySize    int                 `json:"body_size"`
+	ID             string              `json:"id"`
+	ChannelSlug    string              `json:"channel_slug"`
+	ReceivedAt     time.Time           `json:"received_at"`
+	Method         string              `json:"method"`
+	Path           string              `json:"path"`
+	Query          map[string][]string `json:"query"`
+	Headers        map[string][]string `json:"headers"`
+	Body           []byte              `json:"body"`
+	ContentType    string              `json:"content_type"`
+	BodySize       int                 `json:"body_size"`
+	ResponseStatus int                 `json:"response_status"`
+	ResponseBody   json.RawMessage     `json:"response_body"`
 }
 
 func toChannelJSON(ch *store.Channel) channelJSON {
@@ -37,23 +39,25 @@ func toChannelJSON(ch *store.Channel) channelJSON {
 	}
 }
 
-func toRequestJSON(r *store.Request) requestJSON {
+func toRequestJSON(r *store.Request, respStatus int, respBody []byte) requestJSON {
 	// Convert http.Header (map[string][]string) to plain map for JSON.
 	headers := make(map[string][]string, len(r.Headers))
 	for k, v := range r.Headers {
 		headers[k] = v
 	}
 	return requestJSON{
-		ID:          r.ID,
-		ChannelSlug: r.ChannelSlug,
-		ReceivedAt:  r.ReceivedAt,
-		Method:      r.Method,
-		Path:        r.Path,
-		Query:       r.Query,
-		Headers:     headers,
-		Body:        r.Body,
-		ContentType: r.ContentType,
-		BodySize:    r.BodySize,
+		ID:             r.ID,
+		ChannelSlug:    r.ChannelSlug,
+		ReceivedAt:     r.ReceivedAt,
+		Method:         r.Method,
+		Path:           r.Path,
+		Query:          r.Query,
+		Headers:        headers,
+		Body:           r.Body,
+		ContentType:    r.ContentType,
+		BodySize:       r.BodySize,
+		ResponseStatus: respStatus,
+		ResponseBody:   json.RawMessage(respBody),
 	}
 }
 
@@ -153,7 +157,8 @@ func NewAPIHandler(st *store.Store) http.Handler {
 		requests := st.GetRequests(slug)
 		out := make([]requestJSON, len(requests))
 		for i, req := range requests {
-			out[i] = toRequestJSON(req)
+			status, body := st.GetResponseRule(slug, req.Method, req.Path)
+			out[i] = toRequestJSON(req, status, body)
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
@@ -167,7 +172,54 @@ func NewAPIHandler(st *store.Store) http.Handler {
 			writeError(w, http.StatusNotFound, "request not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, toRequestJSON(req))
+		status, body := st.GetResponseRule(slug, req.Method, req.Path)
+		writeJSON(w, http.StatusOK, toRequestJSON(req, status, body))
+	})
+
+	// PATCH /_/api/channels/{slug}/requests/{id}
+	mux.HandleFunc("PATCH /_/api/channels/{slug}/requests/{id}", func(w http.ResponseWriter, r *http.Request) {
+		slug := r.PathValue("slug")
+		id := r.PathValue("id")
+
+		req, ok := st.GetRequest(slug, id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "request not found")
+			return
+		}
+
+		var body struct {
+			ResponseStatus *int            `json:"response_status"`
+			ResponseBody   json.RawMessage `json:"response_body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+
+		if body.ResponseStatus == nil {
+			writeError(w, http.StatusBadRequest, "response_status is required")
+			return
+		}
+		if body.ResponseBody == nil {
+			writeError(w, http.StatusBadRequest, "response_body is required")
+			return
+		}
+		if *body.ResponseStatus < 100 || *body.ResponseStatus > 599 {
+			writeError(w, http.StatusBadRequest, "response_status must be between 100 and 599")
+			return
+		}
+		if !json.Valid(body.ResponseBody) {
+			writeError(w, http.StatusBadRequest, "response_body must be valid JSON")
+			return
+		}
+
+		if err := st.SetResponseRule(slug, req.Method, req.Path, *body.ResponseStatus, []byte(body.ResponseBody)); err != nil {
+			writeError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+
+		status, respBody := st.GetResponseRule(slug, req.Method, req.Path)
+		writeJSON(w, http.StatusOK, toRequestJSON(req, status, respBody))
 	})
 
 	return mux

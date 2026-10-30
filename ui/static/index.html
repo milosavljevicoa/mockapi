@@ -710,6 +710,30 @@
       margin-bottom: 8px;
     }
 
+    /* ── Modal textarea / label ──────────────────────── */
+    .modal-textarea {
+      width: 100%;
+      background: var(--bg-base);
+      border: 1px solid var(--border-hi);
+      border-radius: 4px;
+      padding: 7px 10px;
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-pri);
+      outline: none;
+      resize: vertical;
+      min-height: 80px;
+      margin-bottom: 6px;
+    }
+    .modal-textarea:focus { border-color: var(--accent); }
+    .modal-textarea::placeholder { color: var(--text-muted); }
+    .modal-label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
     /* ── Scrollable full detail content ───────────────── */
     .detail-scroll {
       flex: 1;
@@ -800,6 +824,26 @@
     </div>
   </div>
 
+  <!-- ── Edit Response Modal ──────────────────── -->
+  <div class="modal-backdrop hidden" id="edit-response-backdrop"
+       role="dialog" aria-modal="true" aria-labelledby="edit-response-title">
+    <div class="modal">
+      <div class="modal-title" id="edit-response-title">Edit Response</div>
+      <div class="modal-sub">Sets the response for all requests to this method + path.</div>
+      <label class="modal-label" for="edit-status-input">Status code</label>
+      <input class="modal-input" id="edit-status-input" type="number"
+             min="100" max="599" placeholder="200" autocomplete="off">
+      <label class="modal-label" for="edit-body-input">Response body (JSON)</label>
+      <textarea class="modal-textarea" id="edit-body-input"
+                placeholder="{}" spellcheck="false"></textarea>
+      <div class="modal-error" id="edit-response-error"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btn-edit-response-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-edit-response-save">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Context menu ──────────────────────── -->
   <div class="ctx-menu" id="ctx-menu" style="display:none">
     <div class="ctx-item" id="ctx-copy-url">
@@ -835,6 +879,10 @@
     const modalError     = $('modal-error');
     const successUrl     = $('success-url');
     const ctxMenu        = $('ctx-menu');
+    const editResponseBackdrop = $('edit-response-backdrop');
+    const editStatusInput      = $('edit-status-input');
+    const editBodyInput        = $('edit-body-input');
+    const editResponseError    = $('edit-response-error');
 
     // ── Utilities ──────────────────────────────────────────────────────
     function fmtTimestamp(isoStr) {
@@ -1142,9 +1190,26 @@
 
             <div class="section-label" style="margin-top:24px">Body</div>
             ${renderBodyPane(bodyText, ct)}
+
+            <div class="section-label" style="margin-top:24px">Response</div>
+            <div class="overview-grid">
+              <div class="overview-row">
+                <div class="overview-key">Status</div>
+                <div class="overview-val">${escHtml(String(req.response_status))}</div>
+              </div>
+            </div>
+            <pre class="body-pre" style="margin-top:8px">${highlightJson(JSON.stringify(req.response_body, null, 2))}</pre>
+            <div style="margin-top:10px">
+              <button class="btn btn-ghost" id="btn-edit-response">Edit response</button>
+            </div>
           </div>
         </div>
       `;
+
+      const btnEditResponse = detailArea.querySelector('#btn-edit-response');
+      if (btnEditResponse) {
+        btnEditResponse.addEventListener('click', () => openEditResponseModal(req));
+      }
 
       // Sub-tab switching (body pretty/raw)
       const subTabs = detailArea.querySelectorAll('.sub-tab');
@@ -1236,6 +1301,71 @@
       `;
     }
 
+    // ── Edit Response Modal ────────────────────────────────────────────
+    function openEditResponseModal(req) {
+      editStatusInput.value = req.response_status;
+      editBodyInput.value = JSON.stringify(req.response_body, null, 2);
+      editResponseError.textContent = '';
+      editResponseBackdrop.dataset.slug = req.channel_slug;
+      editResponseBackdrop.dataset.id   = req.id;
+      editResponseBackdrop.classList.remove('hidden');
+      editStatusInput.focus();
+    }
+
+    function closeEditResponseModal() {
+      editResponseBackdrop.classList.add('hidden');
+      editResponseBackdrop.dataset.slug = '';
+      editResponseBackdrop.dataset.id   = '';
+    }
+
+    $('btn-edit-response-cancel').addEventListener('click', closeEditResponseModal);
+
+    editResponseBackdrop.addEventListener('click', e => {
+      if (e.target === editResponseBackdrop) closeEditResponseModal();
+    });
+
+    $('btn-edit-response-save').addEventListener('click', async () => {
+      const slug = editResponseBackdrop.dataset.slug;
+      const id   = editResponseBackdrop.dataset.id;
+      if (!slug || !id) return;
+
+      const statusVal = parseInt(editStatusInput.value, 10);
+      let bodyVal;
+      try {
+        bodyVal = JSON.parse(editBodyInput.value);
+      } catch {
+        editResponseError.textContent = 'Response body must be valid JSON.';
+        return;
+      }
+
+      editResponseError.textContent = '';
+
+      try {
+        const res = await fetch(
+          `/_/api/channels/${encodeURIComponent(slug)}/requests/${encodeURIComponent(id)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ response_status: statusVal, response_body: bodyVal }),
+          }
+        );
+        if (res.ok) {
+          const updated = await res.json();
+          closeEditResponseModal();
+          renderDetail(updated);
+        } else {
+          let msg = 'Error ' + res.status;
+          try {
+            const data = await res.json();
+            if (data.error) msg = data.error;
+          } catch {}
+          editResponseError.textContent = msg;
+        }
+      } catch (e) {
+        editResponseError.textContent = 'Network error: ' + e.message;
+      }
+    });
+
     // ── Context menu ───────────────────────────────────────────────────
     function openCtxMenu(e, slug) {
       ctxTargetSlug = slug;
@@ -1259,6 +1389,7 @@
       if (e.key === 'Escape') {
         closeCtxMenu();
         closeModal();
+        closeEditResponseModal();
       }
     });
 

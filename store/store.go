@@ -7,11 +7,17 @@ import (
 	"time"
 )
 
+type responseRule struct {
+	status int
+	body   []byte
+}
+
 // Store is a thread-safe in-memory store for channels and requests.
 type Store struct {
 	mu       sync.RWMutex
 	channels map[string]*Channel
 	requests []*Request
+	rules    map[string]*responseRule
 	cap      int
 }
 
@@ -20,6 +26,7 @@ func New(cap int) *Store {
 	return &Store{
 		channels: make(map[string]*Channel),
 		requests: make([]*Request, 0),
+		rules:    make(map[string]*responseRule),
 		cap:      cap,
 	}
 }
@@ -178,4 +185,36 @@ func (s *Store) ClearRequests(slug string) {
 		tail[i] = nil
 	}
 	s.requests = out
+}
+
+// GetResponseRule returns the configured response for a channel+method+path
+// combination. When no rule has been set it falls back to 200 with an empty
+// JSON object so callers always get a usable response.
+func (s *Store) GetResponseRule(slug, method, path string) (int, []byte) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Null-byte separator cannot appear in valid HTTP method names or URL paths,
+	// preventing collisions between e.g. ("ab", "cd", "ef") and ("a", "bcd", "ef").
+	key := slug + "\x00" + method + "\x00" + path
+	if r, ok := s.rules[key]; ok {
+		body := make([]byte, len(r.body))
+		copy(body, r.body)
+		return r.status, body
+	}
+	return 200, []byte("{}")
+}
+
+// SetResponseRule upserts a response rule for the given channel+method+path
+// combination. Returns an error when the channel slug is not registered.
+func (s *Store) SetResponseRule(slug, method, path string, status int, body []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.channels[slug]; !ok {
+		return errors.New("channel not found")
+	}
+	key := slug + "\x00" + method + "\x00" + path
+	s.rules[key] = &responseRule{status: status, body: body}
+	return nil
 }
